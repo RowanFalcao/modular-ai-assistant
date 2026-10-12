@@ -1,0 +1,21 @@
+# Ambiente Virtual
+.venv/
+venv/
+
+# Variaveis de Ambiente e Segredos
+.env
+
+# Dados Locais e Banco Vetorial
+data/raw/*
+!data/raw/.gitkeep
+data/vector_db/*
+!data/vector_db/.gitkeep
+
+# Cache do Python e Logs
+__pycache__/
+*.py[cod]
+*.sqlite3
+
+# Arquivos temporarios de IDE
+.vscode/
+.cursor/
