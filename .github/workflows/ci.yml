@@ -26,4 +26,9 @@ jobs:
 
     - name: Verificar sintaxe dos arquivos Python
       run: |
-        python -m py_compile $(git ls-files '*.py')
+        FILES=$(git ls-files '*.py')
+        if [ -n "$FILES" ]; then
+          python -m py_compile $FILES
+        else
+          echo "Nenhum arquivo .py encontrado para validar neste commit."
+        fi
