@@ -23,3 +23,6 @@ __pycache__/
 # Developer Notes e Planejamento Local
 CONTEXTO_Plano_de_Voo_LLMinds*.txt
 Guia_Mestre_LLMinds*.txt
+
+# Histórico de conversas da interface Streamlit
+data/conversations/
