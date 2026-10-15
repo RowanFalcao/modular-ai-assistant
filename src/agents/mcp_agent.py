@@ -11,15 +11,13 @@ load_dotenv()
 
 async def run_mcp_agent():
     """
-    Loop principal do Agente: Conecta o LLM (OpenRouter) às ferramentas locais (MCP).
+    Loop principal do Agente com memória de curto prazo e chat interativo.
     """
-    # 1. Configura o Cérebro (Cliente OpenRouter)
     llm_client = AsyncOpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=os.getenv("OPENROUTER_API_KEY")
     )
     
-    # 2. Configura a Mão (Servidor MCP Local)
     server_params = StdioServerParameters(
         command="python",
         args=["src/mcp_servers/math_server.py"]
@@ -31,7 +29,7 @@ async def run_mcp_agent():
         async with ClientSession(read, write) as session:
             await session.initialize()
             
-            # 3. Lê as ferramentas locais e converte para o formato da OpenAI (Tool Calling)
+            # 1. Converte ferramentas do MCP para o padrão OpenAI
             mcp_tools_response = await session.list_tools()
             openai_tools = []
             
@@ -45,57 +43,84 @@ async def run_mcp_agent():
                     }
                 })
             
-            print(f"🛠️  Ferramentas enviadas para a IA: {[t.name for t in mcp_tools_response.tools]}")
+            # 2. Inicializa a "Memória" do Agente (Histórico de Conversa)
+            # O system prompt dita o comportamento geral da IA.
+            messages = [
+                {
+                    "role": "system", 
+                    "content": "Você é um assistente de IA prestativo e analítico. Use as ferramentas fornecidas para cálculos matemáticos precisos."
+                }
+            ]
             
-            # 4. O Prompt do Usuário
-            user_prompt = "Olá! Pode me dizer qual é o resultado de 1545 somado com 342?"
-            print(f"\n👤 Usuário: {user_prompt}")
+            print("✅ Agente pronto! Digite 'sair' para encerrar o chat.")
+            print("-" * 50)
             
-            messages = [{"role": "user", "content": user_prompt}]
-            
-            # 5. O Cérebro Pensa: Enviamos o prompt e as ferramentas para a IA
-            print("🧠 IA está pensando...")
-            response = await llm_client.chat.completions.create(
-                model="openai/gpt-4o-mini", # Pode usar claude-3.5-sonnet se preferir
-                messages=messages,
-                tools=openai_tools,
-                tool_choice="auto"
-            )
-            
-            response_message = response.choices[0].message
-            messages.append(response_message)
-            
-            # 6. A Decisão: A IA decidiu usar alguma ferramenta?
-            if response_message.tool_calls:
-                for tool_call in response_message.tool_calls:
-                    print(f"⚡ IA decidiu usar a ferramenta local: {tool_call.function.name}")
-                    
-                    # Converte os argumentos que a IA enviou
-                    tool_args = json.loads(tool_call.function.arguments)
-                    print(f"📦 Argumentos recebidos da IA: {tool_args}")
-                    
-                    # 7. A Ação: Executa a ferramenta localmente no seu PC!
-                    mcp_result = await session.call_tool(tool_call.function.name, arguments=tool_args)
-                    result_text = mcp_result.content[0].text
-                    print(f"✅ Resultado local gerado: {result_text}")
-                    
-                    # 8. Devolvemos o resultado para o Cérebro
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": result_text
-                    })
+            # 3. O Loop Interativo de Chat
+            while True:
+                user_prompt = input("\n👤 Você: ")
                 
-                # 9. A Resposta Final: A IA formula a frase final com o resultado em mãos
-                print("🧠 IA formulando a resposta final...")
-                final_response = await llm_client.chat.completions.create(
-                    model="openai/gpt-4o-mini",
-                    messages=messages
-                )
-                print(f"\n🤖 Assistente: {final_response.choices[0].message.content}")
-            else:
-                # Se a IA achar que não precisa de ferramentas, ela só responde normalmente
-                print(f"\n🤖 Assistente: {response_message.content}")
+                # Condição de saída graciosa
+                if user_prompt.strip().lower() in ['sair', 'exit', 'quit']:
+                    print("👋 Encerrando o assistente. Até logo!")
+                    break
+                
+                # Se o usuário apertar Enter sem digitar nada, apenas ignora
+                if not user_prompt.strip():
+                    continue
+                    
+                # Anota a nova mensagem do usuário na memória
+                messages.append({"role": "user", "content": user_prompt})
+                
+                try:
+                    # Envia todo o histórico para o Cérebro
+                    response = await llm_client.chat.completions.create(
+                        model="openai/gpt-4o-mini", # Pode alterar para claude-3.5-sonnet se quiser
+                        messages=messages,
+                        tools=openai_tools,
+                        tool_choice="auto"
+                    )
+                    
+                    response_message = response.choices[0].message
+                    # Anota a resposta (ou a decisão de usar a ferramenta) na memória
+                    messages.append(response_message)
+                    
+                    # 4. Tratamento de Tool Calling (Ação Local)
+                    if response_message.tool_calls:
+                        for tool_call in response_message.tool_calls:
+                            print(f"   [⚡ IA executando: {tool_call.function.name}]")
+                            
+                            tool_args = json.loads(tool_call.function.arguments)
+                            mcp_result = await session.call_tool(tool_call.function.name, arguments=tool_args)
+                            result_text = mcp_result.content[0].text
+                            
+                            # Anota o resultado da ferramenta na memória para o Cérebro ler
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "content": result_text
+                            })
+                        
+                        # O Cérebro lê o resultado da ferramenta e formula a resposta final
+                        final_response = await llm_client.chat.completions.create(
+                            model="openai/gpt-4o-mini",
+                            messages=messages
+                        )
+                        final_text = final_response.choices[0].message.content
+                        
+                        # Anota a resposta final na memória e exibe na tela
+                        messages.append({"role": "assistant", "content": final_text})
+                        print(f"🤖 Assistente: {final_text}")
+                    
+                    else:
+                        # Resposta direta (sem ferramentas)
+                        print(f"🤖 Assistente: {response_message.content}")
+                        
+                except Exception as e:
+                    print(f"❌ Erro de comunicação com a IA: {str(e)}")
 
 if __name__ == "__main__":
+    # Silencia possíveis avisos não críticos do Windows no terminal
+    if os.name == 'nt':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
     asyncio.run(run_mcp_agent())
