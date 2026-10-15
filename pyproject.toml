@@ -13,7 +13,8 @@ dependencies = [
     "qdrant-client (==1.19.1)",
     "llama-index-vector-stores-qdrant (==0.10.4)",
     "llama-index-embeddings-huggingface (==0.8.0)",
-    "sentence-transformers (==5.7.0)"
+    "sentence-transformers (==5.7.0)",
+    "mcp (>=2.3.0,<3.0.0)"
 ]
 
 
