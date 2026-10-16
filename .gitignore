@@ -21,8 +21,12 @@ __pycache__/
 .cursor/
 
 # Developer Notes e Planejamento Local
-CONTEXTO_Plano_de_Voo_LLMinds*.txt
 Guia_Mestre_LLMinds*.txt
+Plano_de_Voo_LLMinds*.txt
+Super_Prompt*.txt
+Guia_de_Sobrevivencia_Git_Poetry*.txt
+Como_iniciar_corretamente_o_servidor*.txt
+estrutura_diretorios*.txt
 
 # Histórico de conversas da interface Streamlit
 data/conversations/

@@ -235,10 +235,11 @@ with st.sidebar:
     # Seção de Configurações Técnicas
     st.markdown("### ⚙️ Configurações do Agente")
     available_models = [
-        "nvidia/nemotron-3.5-lightning:free",
         "openai/gpt-4o-mini",
-        "anthropic/claude-3.5-sonnet",
-        "deepseek/deepseek-chat",
+        "nvidia/nemotron-3.5-lightning:free",
+        "nvidia/nemotron-3.5-super-vl:free",
+        "google/gemma-4-31b-it:free",
+        "anthropic/claude-opus-5.5"
     ]
 
     selected_model = st.selectbox(
