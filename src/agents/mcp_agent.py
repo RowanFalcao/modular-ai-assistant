@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import sys
+import re
 from contextlib import AsyncExitStack
 from typing import AsyncGenerator
 from dotenv import load_dotenv
@@ -11,6 +12,42 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 load_dotenv()
 
+def parse_xml_tool_calls(text: str) -> list:
+    """
+    Adapter: Inspeciona texto bruto e cria uma classe anônima MockToolCall 
+    que engana perfeitamente a biblioteca AsyncOpenAI.
+    """
+    import re
+    import json
+    
+    class MockFunction:
+        def __init__(self, name, arguments):
+            self.name = name
+            self.arguments = arguments
+            
+    class MockToolCall:
+        def __init__(self, id, type, function):
+            self.id = id
+            self.type = type
+            self.function = function
+            
+    tool_calls = []
+    pattern = re.compile(r"<tool_call>\s*<function=(?P<name>[^\s>]+)>(?P<args>.*?)</function>\s*</tool_call>", re.DOTALL)
+    
+    for i, m in enumerate(pattern.finditer(text)):
+        func_name = m.group("name").strip()
+        args_block = m.group("args")
+        
+        params = {}
+        for pm in re.finditer(r"<parameter=(?P<pname>[^\s>]+)>(?P<pval>.*?)</parameter>", args_block, re.DOTALL):
+            params[pm.group("pname").strip()] = pm.group("pval").strip()
+            
+        # Retorna o objeto exatamente como o loop do agent espera (usando notação de ponto .name e .arguments)
+        mock_function = MockFunction(name=func_name, arguments=json.dumps(params, ensure_ascii=False))
+        mock_call = MockToolCall(id=f"call_adapter_{i}", type="function", function=mock_function)
+        tool_calls.append(mock_call)
+        
+    return tool_calls
 
 class MCPAgent:
     """
@@ -34,6 +71,10 @@ class MCPAgent:
                 command=sys.executable,
                 args=["src/mcp_servers/rag_server.py"],
             ),
+            StdioServerParameters(
+                command=sys.executable,
+                args=["src/mcp_servers/filesystem_server.py"],
+            ),
         ]
         self.exit_stack = AsyncExitStack()
         self.sessions: dict[str, ClientSession] = {}
@@ -43,9 +84,13 @@ class MCPAgent:
             {
                 "role": "system",
                 "content": (
-                    "Você é o Orquestrador Principal do sistema modular. "
-                    "Utilize as ferramentas disponíveis para resolução de problemas matemáticos "
-                    "e consulta à base privada de documentos antes de formular respostas definitivas."
+                    "Você é o Orquestrador Principal de um sistema modular de engenharia de software.\n"
+                    "DIRETRIZES RÍGIDAS DE TOOL CALLING (USO DE FERRAMENTAS):\n"
+                    "1. Você tem acesso a ferramentas locais para manipular arquivos, matemática e buscas.\n"
+                    "2. Você DEVE acionar as ferramentas usando ESTRITAMENTE o formato nativo de Function Calling (JSON).\n"
+                    "3. É ESTRITAMENTE PROIBIDO escrever tags XML ou texto bruto como `<tool_call>`, `<function>` ou `<parameter>` na sua resposta de texto.\n"
+                    "4. Se você precisar executar múltiplas ferramentas (ex: listar diretório e depois escrever arquivo), faça UMA chamada de ferramenta, aguarde o resultado (tool_result), e só então faça a próxima chamada.\n"
+                    "5. Pense passo a passo, mas nunca exponha a sintaxe da ferramenta no texto."
                 ),
             }
         ]
@@ -93,6 +138,14 @@ class MCPAgent:
         )
 
         response_message = response.choices[0].message
+
+        # INTERCEPTAÇÃO: Adapter de Formato (Fallback)
+        if response_message.content and "<tool_call>" in response_message.content:
+            parsed_tools = parse_xml_tool_calls(response_message.content)
+            if parsed_tools:
+                response_message.tool_calls = parsed_tools
+                response_message.content = None
+
         self.messages.append(response_message)
 
         if response_message.tool_calls:
