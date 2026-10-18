@@ -75,6 +75,10 @@ class MCPAgent:
                 command=sys.executable,
                 args=["src/mcp_servers/filesystem_server.py"],
             ),
+            StdioServerParameters(
+                command=sys.executable,
+                args=["src/mcp_servers/skill_server.py"],
+            ),
         ]
         self.exit_stack = AsyncExitStack()
         self.sessions: dict[str, ClientSession] = {}

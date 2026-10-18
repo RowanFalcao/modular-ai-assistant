@@ -1,7 +1,7 @@
 [project]
 name = "modular-ai-assistant"
 version = "0.1.0"
-description = ""
+description = "Ecossistema Multi-Agente Orquestrado com RAG Local e MCP"
 authors = [
     {name = "RowanFalcao",email = "topsecretfalcao@gmail.com"}
 ]
