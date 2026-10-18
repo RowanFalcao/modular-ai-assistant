@@ -9,6 +9,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.agents.mcp_agent import MCPAgent
+from src.agents.error_handler import format_api_error
 
 
 def render_banner() -> None:
@@ -66,8 +67,11 @@ async def main() -> None:
                     print(f"  [✓ Concluído] Retorno obtido: {preview[:70]}...")
                 elif event_type == "assistant_response":
                     print(f"\nassistente > {payload}\n")
-                elif event_type == "error":
-                    print(f"  [X Erro de Ferramenta] {payload}")
+                elif event_type in ("api_error", "error"):
+                    err = format_api_error(payload)
+                    print(f"\n[AVISO DO PROVEDOR] {err['title']}")
+                    print(f"  Mensagem: {err['message']}")
+                    print(f"  Sugestão: {err['action']}\n")
 
         except KeyboardInterrupt:
             print("\n\n[INFO] Sinal de interrupção (Ctrl+C) recebido. A encerrar de forma segura...")

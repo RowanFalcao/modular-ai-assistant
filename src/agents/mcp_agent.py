@@ -134,12 +134,18 @@ class MCPAgent:
         """
         self.messages.append({"role": "user", "content": user_input})
 
-        response = await self.client.chat.completions.create(
-            model=self.model_name,
-            messages=self.messages,
-            tools=self.api_tools,
-            tool_choice="auto",
-        )
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model_name,
+                messages=self.messages,
+                tools=self.api_tools,
+                tool_choice="auto",
+            )
+        except Exception as e:
+            if self.messages and isinstance(self.messages[-1], dict) and self.messages[-1].get("role") == "user":
+                self.messages.pop()
+            yield ("api_error", str(e))
+            return
 
         response_message = response.choices[0].message
 
@@ -180,13 +186,17 @@ class MCPAgent:
                 else:
                     yield ("error", f"Servidor não localizado para {tool_name}")
 
-            final_response = await self.client.chat.completions.create(
-                model=self.model_name,
-                messages=self.messages,
-            )
-            final_text = final_response.choices[0].message.content
-            self.messages.append({"role": "assistant", "content": final_text})
-            yield ("assistant_response", final_text)
+            try:
+                final_response = await self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=self.messages,
+                )
+                final_text = final_response.choices[0].message.content
+                self.messages.append({"role": "assistant", "content": final_text})
+                yield ("assistant_response", final_text)
+            except Exception as e:
+                yield ("api_error", str(e))
+                return
 
         else:
             yield ("assistant_response", response_message.content)
