@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.agents.mcp_agent import MCPAgent
+from src.agents.error_handler import format_api_error
 
 # Diretório de Persistência Local
 CONVERSATIONS_DIR = PROJECT_ROOT / "data" / "conversations"
@@ -103,7 +104,7 @@ class AsyncBridge:
                 async for event_type, payload in agent.process_turn(user_input):
                     await queue.put((event_type, payload))
             except Exception as e:
-                await queue.put(("error", str(e)))
+                await queue.put(("api_error", str(e)))
             finally:
                 await queue.put((None, None))
 
@@ -285,6 +286,7 @@ if prompt := st.chat_input("Digite sua mensagem..."):
         status_container = st.status("Processando requisição...", expanded=True)
         executed_tools = []
         final_answer = ""
+        error_info = None
 
         try:
             for event_type, payload in st.session_state.bridge.stream_turn(st.session_state.agent, prompt):
@@ -297,26 +299,46 @@ if prompt := st.chat_input("Digite sua mensagem..."):
                     executed_tools.append(f"Resultado:\n{payload}")
                 elif event_type == "assistant_response":
                     final_answer = payload
-                elif event_type == "error":
-                    status_container.error(f"Erro: {payload}")
+                elif event_type in ("api_error", "error"):
+                    error_info = format_api_error(payload)
+                    status_container.update(
+                        label=f"Aviso do Provedor: {error_info['title']}",
+                        state="error",
+                        expanded=True,
+                    )
+                    status_container.warning(
+                        f"**{error_info['title']}**\n\n"
+                        f"{error_info['message']}\n\n"
+                        f"💡 **Recomendação:** {error_info['action']}"
+                    )
+                    with status_container.expander("🛠️ Detalhes técnicos do provedor (Debug)", expanded=False):
+                        st.code(error_info["raw"], language="text")
 
-            status_container.update(label="Concluído!", state="complete", expanded=False)
-            st.markdown(final_answer)
+            if error_info:
+                st.warning(
+                    f"⚠️ **Não foi possível obter resposta do provedor.**\n\n"
+                    f"{error_info['message']}\n\n"
+                    f"💡 **O que fazer:** {error_info['action']}"
+                )
+            elif final_answer:
+                status_container.update(label="Concluído!", state="complete", expanded=False)
+                st.markdown(final_answer)
 
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": final_answer,
-                "tools": executed_tools,
-            })
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": final_answer,
+                    "tools": executed_tools,
+                })
 
-            # Salva o estado completo no disco após cada turno
-            save_conversation(
-                st.session_state.current_conv_id,
-                st.session_state.current_title,
-                st.session_state.messages,
-                st.session_state.agent.messages,
-            )
+                # Salva o estado completo no disco após cada turno
+                save_conversation(
+                    st.session_state.current_conv_id,
+                    st.session_state.current_title,
+                    st.session_state.messages,
+                    st.session_state.agent.messages,
+                )
 
         except Exception as e:
-            status_container.update(label="Erro no processamento", state="error", expanded=True)
-            st.error(f"Falha operacional: {str(e)}")
+            err_dict = format_api_error(e)
+            status_container.update(label="Falha de Comunicação", state="error", expanded=True)
+            st.error(f"**{err_dict['title']}**: {err_dict['message']}\n\n💡 {err_dict['action']}")
