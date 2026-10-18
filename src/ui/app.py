@@ -13,8 +13,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.agents.mcp_agent import MCPAgent
-from src.agents.error_handler import format_api_error
+try:
+    from src.agents.mcp_agent import MCPAgent
+    from src.agents.error_handler import format_api_error
+except ImportError:
+    from agents.mcp_agent import MCPAgent
+    from agents.error_handler import format_api_error
 
 # Diretório de Persistência Local
 CONVERSATIONS_DIR = PROJECT_ROOT / "data" / "conversations"
@@ -82,8 +86,6 @@ def delete_conversation(conv_id: str) -> None:
 # ----------------------------------------------------------------------
 class AsyncBridge:
     def __init__(self) -> None:
-        if os.name == "nt":
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self._run_loop, daemon=True)
         self.thread.start()
