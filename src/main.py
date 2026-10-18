@@ -1,5 +1,6 @@
 import asyncio
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -8,8 +9,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.agents.mcp_agent import MCPAgent
-from src.agents.error_handler import format_api_error
+try:
+    from src.agents.mcp_agent import MCPAgent
+    from src.agents.error_handler import format_api_error
+except ImportError:
+    from agents.mcp_agent import MCPAgent
+    from agents.error_handler import format_api_error
 
 
 def render_banner() -> None:
@@ -54,7 +59,10 @@ async def main() -> None:
                 break
 
             if cmd in ["limpar", "clear"]:
-                os.system("cls" if os.name == "nt" else "clear")
+                subprocess.run(
+                    ["cmd", "/c", "cls"] if os.name == "nt" else ["clear"],
+                    check=False,
+                )
                 render_banner()
                 continue
 
@@ -86,9 +94,6 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    if os.name == "nt":
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
