@@ -25,6 +25,7 @@ def test_filesystem_server_sandbox_seguro():
     validado = _validate_path(str(caminho_valido))
     assert validado == caminho_valido.resolve()
 
-    # Caminho fora do workspace deve disparar PermissionError
+    # Caminho fora do workspace (diretorio pai) deve disparar PermissionError em qualquer SO
+    caminho_fora = ALLOWED_WORKSPACE.parent / "arquivo_fora_do_workspace.txt"
     with pytest.raises(PermissionError):
-        _validate_path("C:/Windows/System32")
+        _validate_path(str(caminho_fora))
