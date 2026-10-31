@@ -1,0 +1,26 @@
+# Normalização de line endings para consistência entre plataformas
+# Todos os arquivos de texto usam LF no repositório e convertem na checkout
+* text=auto eol=lf
+
+# Forçar LF para arquivos de código Python e configuração
+*.py text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf
+*.env text eol=lf
+
+# Binários — sem conversão
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary

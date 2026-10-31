@@ -21,3 +21,4 @@ def test_parse_xml_tool_calls():
     assert len(calls) == 1
     assert calls[0].function.name == "listar_arquivos"
     assert "C:/Users/User/Desktop" in calls[0].function.arguments
+

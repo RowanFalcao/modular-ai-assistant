@@ -24,3 +24,4 @@ def test_format_api_error_fallback():
     info = format_api_error("Erro desconhecido e aleatorio")
     assert info["badge"] == "error"
     assert info["title"] == "Falha Operacional no Modelo"
+
