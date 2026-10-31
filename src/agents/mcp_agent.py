@@ -4,9 +4,10 @@ import os
 import sys
 import re
 from contextlib import AsyncExitStack
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator, cast
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
@@ -56,6 +57,30 @@ class MCPAgent:
     e as chamadas determinísticas de inferência via LLM.
     """
 
+    @classmethod
+    def get_default_system_message(cls) -> dict:
+        return {
+            "role": "system",
+            "content": (
+                "Você é o Orquestrador Principal de um sistema modular de engenharia de software.\n"
+                "DIRETRIZES RÍGIDAS DE TOOL CALLING (USO DE FERRAMENTAS):\n"
+                "1. Você tem acesso a ferramentas locais para manipular arquivos, matemática e buscas.\n"
+                "2. Você DEVE acionar as ferramentas usando ESTRITAMENTE o formato nativo de Function Calling (JSON).\n"
+                "3. É ESTRITAMENTE PROIBIDO escrever tags XML ou texto bruto como `<tool_call>`, `<function>` ou `<parameter>` na sua resposta de texto.\n"
+                "4. Se você precisar executar múltiplas ferramentas (ex: listar diretório e depois escrever arquivo), faça UMA chamada de ferramenta, aguarde o resultado (tool_result), e só então faça a próxima chamada.\n"
+                "5. Pense passo a passo, mas nunca exponha a sintaxe da ferramenta no texto.\n\n"
+                "FERRAMENTAS DE ACESSO AO SISTEMA DE ARQUIVOS LOCAL DO UTILIZADOR:\n"
+                "Você possui ferramentas que acessam QUALQUER pasta ou arquivo no computador local do utilizador (Desktop, Documentos, Downloads, etc.).\n"
+                "- `listar_arquivos(caminho)` — Lista arquivos e pastas de um diretório local. Exemplo: listar_arquivos('C:\\\\Users\\\\User\\\\Desktop')\n"
+                "- `ler_arquivo(caminho)` — Lê o conteúdo de um arquivo local.\n"
+                "- `salvar_arquivo(caminho, conteudo)` — Cria ou sobrescreve um arquivo local.\n"
+                "- `alterar_arquivo(caminho, conteudo)` — Altera um arquivo existente.\n"
+                "- `excluir_arquivo(caminho)` — Exclui um arquivo (só por pedido explícito do utilizador).\n"
+                "Quando o utilizador pedir para acessar, ler, listar ou manipular arquivos do computador dele, USE estas ferramentas.\n"
+                "Aceite caminhos absolutos (C:\\\\...), relativos, e com ~ (diretório do utilizador)."
+            ),
+        }
+
     def __init__(self, model_name: str = "openai/gpt-4o-mini") -> None:
         self.model_name = model_name
         self.client = AsyncOpenAI(
@@ -79,25 +104,16 @@ class MCPAgent:
                 command=sys.executable,
                 args=["src/mcp_servers/skill_server.py"],
             ),
+            StdioServerParameters(
+                command=sys.executable,
+                args=["src/mcp_servers/local_filesystem_server.py"],
+            ),
         ]
         self.exit_stack = AsyncExitStack()
-        self.sessions: dict[str, ClientSession] = {}
-        self.openai_tools: list[dict] = []
-        self.api_tools: list[dict] = []
-        self.messages: list[dict] = [
-            {
-                "role": "system",
-                "content": (
-                    "Você é o Orquestrador Principal de um sistema modular de engenharia de software.\n"
-                    "DIRETRIZES RÍGIDAS DE TOOL CALLING (USO DE FERRAMENTAS):\n"
-                    "1. Você tem acesso a ferramentas locais para manipular arquivos, matemática e buscas.\n"
-                    "2. Você DEVE acionar as ferramentas usando ESTRITAMENTE o formato nativo de Function Calling (JSON).\n"
-                    "3. É ESTRITAMENTE PROIBIDO escrever tags XML ou texto bruto como `<tool_call>`, `<function>` ou `<parameter>` na sua resposta de texto.\n"
-                    "4. Se você precisar executar múltiplas ferramentas (ex: listar diretório e depois escrever arquivo), faça UMA chamada de ferramenta, aguarde o resultado (tool_result), e só então faça a próxima chamada.\n"
-                    "5. Pense passo a passo, mas nunca exponha a sintaxe da ferramenta no texto."
-                ),
-            }
-        ]
+        self.sessions = {}
+        self.openai_tools = []
+        self.api_tools = []
+        self.messages: list[ChatCompletionMessageParam | Any] = [self.get_default_system_message()]
 
     async def initialize(self) -> None:
         """Inicializa as conexões IPC com os servidores MCP registados."""
@@ -127,6 +143,23 @@ class MCPAgent:
             for t in self.openai_tools
         ]
 
+    async def _create_chat_completion(
+        self,
+        messages: list[Any],
+        tools: list[dict] | None = None,
+    ) -> ChatCompletion:
+        """Centraliza e isola as chamadas à API, garantindo estritamente o tipo ChatCompletion."""
+        kwargs: dict[str, Any] = {
+            "model": self.model_name,
+            "messages": cast(list[ChatCompletionMessageParam], messages),
+        }
+        if tools:
+            kwargs["tools"] = cast(Any, tools)
+            kwargs["tool_choice"] = "auto"
+
+        res = await self.client.chat.completions.create(**kwargs)
+        return cast(ChatCompletion, res)
+
     async def process_turn(self, user_input: str) -> AsyncGenerator[tuple[str, str], None]:
         """
         Executa uma iteração de conversação.
@@ -135,12 +168,7 @@ class MCPAgent:
         self.messages.append({"role": "user", "content": user_input})
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model_name,
-                messages=self.messages,
-                tools=self.api_tools,
-                tool_choice="auto",
-            )
+            response = await self._create_chat_completion(self.messages, self.api_tools)
         except Exception as e:
             if self.messages and isinstance(self.messages[-1], dict) and self.messages[-1].get("role") == "user":
                 self.messages.pop()
@@ -160,7 +188,11 @@ class MCPAgent:
 
         if response_message.tool_calls:
             for tool_call in response_message.tool_calls:
-                tool_name = tool_call.function.name
+                func = getattr(tool_call, "function", None)
+                if func is None:
+                    continue
+
+                tool_name = getattr(func, "name", "")
                 yield ("tool_call", tool_name)
 
                 owner_server = next(
@@ -169,12 +201,12 @@ class MCPAgent:
                 )
 
                 if owner_server:
-                    tool_args = json.loads(tool_call.function.arguments)
+                    tool_args = json.loads(getattr(func, "arguments", "{}"))
                     mcp_result = await self.sessions[owner_server].call_tool(
                         tool_name,
                         arguments=tool_args,
                     )
-                    result_text = mcp_result.content[0].text
+                    result_text = mcp_result.content[0].text if mcp_result.content else ""
 
                     yield ("tool_result", result_text)
 
@@ -187,11 +219,8 @@ class MCPAgent:
                     yield ("error", f"Servidor não localizado para {tool_name}")
 
             try:
-                final_response = await self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=self.messages,
-                )
-                final_text = final_response.choices[0].message.content
+                final_response = await self._create_chat_completion(self.messages)
+                final_text = final_response.choices[0].message.content or ""
                 self.messages.append({"role": "assistant", "content": final_text})
                 yield ("assistant_response", final_text)
             except Exception as e:
@@ -199,7 +228,7 @@ class MCPAgent:
                 return
 
         else:
-            yield ("assistant_response", response_message.content)
+            yield ("assistant_response", response_message.content or "")
 
     async def shutdown(self) -> None:
         """Encerra com segurança todas as sessões e canais de subprocessos."""

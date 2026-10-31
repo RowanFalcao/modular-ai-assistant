@@ -147,12 +147,16 @@ if "current_conv_id" not in st.session_state:
         st.session_state.current_title = latest.get("title", "Nova conversa")
         st.session_state.messages = latest.get("ui_messages", [])
         if "agent_messages" in latest and latest["agent_messages"]:
-            st.session_state.agent.messages = latest["agent_messages"]
+            loaded = latest["agent_messages"]
+            if loaded and loaded[0].get("role") == "system":
+                loaded[0] = MCPAgent.get_default_system_message()
+            st.session_state.agent.messages = loaded
     else:
         new_id = f"conv_{int(datetime.now().timestamp())}"
         st.session_state.current_conv_id = new_id
         st.session_state.current_title = "Nova conversa"
         st.session_state.messages = []
+        st.session_state.agent.messages = [MCPAgent.get_default_system_message()]
         save_conversation(new_id, "Nova conversa", [], st.session_state.agent.messages)
 
 if "messages" not in st.session_state:
@@ -170,9 +174,7 @@ with st.sidebar:
         st.session_state.current_conv_id = new_id
         st.session_state.current_title = "Nova conversa"
         st.session_state.messages = []
-        # Mantém apenas o prompt de sistema no agente
-        if len(st.session_state.agent.messages) > 0:
-            st.session_state.agent.messages = [st.session_state.agent.messages[0]]
+        st.session_state.agent.messages = [MCPAgent.get_default_system_message()]
         save_conversation(new_id, "Nova conversa", [], st.session_state.agent.messages)
         st.rerun()
 
@@ -194,7 +196,10 @@ with st.sidebar:
                     st.session_state.current_title = c_title
                     st.session_state.messages = conv.get("ui_messages", [])
                     if "agent_messages" in conv and conv["agent_messages"]:
-                        st.session_state.agent.messages = conv["agent_messages"]
+                        loaded = conv["agent_messages"]
+                        if loaded and loaded[0].get("role") == "system":
+                            loaded[0] = MCPAgent.get_default_system_message()
+                        st.session_state.agent.messages = loaded
                     st.rerun()
 
         with col_menu:
@@ -222,14 +227,16 @@ with st.sidebar:
                             st.session_state.current_title = nxt.get("title", "Nova conversa")
                             st.session_state.messages = nxt.get("ui_messages", [])
                             if "agent_messages" in nxt and nxt["agent_messages"]:
-                                st.session_state.agent.messages = nxt["agent_messages"]
+                                loaded = nxt["agent_messages"]
+                                if loaded and loaded[0].get("role") == "system":
+                                    loaded[0] = MCPAgent.get_default_system_message()
+                                st.session_state.agent.messages = loaded
                         else:
                             fresh_id = f"conv_{int(datetime.now().timestamp())}"
                             st.session_state.current_conv_id = fresh_id
                             st.session_state.current_title = "Nova conversa"
                             st.session_state.messages = []
-                            if len(st.session_state.agent.messages) > 0:
-                                st.session_state.agent.messages = [st.session_state.agent.messages[0]]
+                            st.session_state.agent.messages = [MCPAgent.get_default_system_message()]
                             save_conversation(fresh_id, "Nova conversa", [], st.session_state.agent.messages)
                     st.rerun()
 
@@ -256,6 +263,9 @@ with st.sidebar:
     st.markdown("### 🔌 Servidores MCP")
     st.success("✓ `math_server.py`")
     st.success("✓ `rag_server.py`")
+    st.success("✓ `filesystem_server.py`")
+    st.success("✓ `skill_server.py`")
+    st.success("✓ `local_filesystem_server.py`")
 
 
 # ----------------------------------------------------------------------

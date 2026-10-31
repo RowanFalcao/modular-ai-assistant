@@ -1,6 +1,6 @@
 [project]
 name = "modular-ai-assistant"
-version = "0.1.0"
+version = "0.2.0"
 description = "Ecossistema Multi-Agente Orquestrado com RAG Local e MCP"
 authors = [
     {name = "RowanFalcao",email = "topsecretfalcao@gmail.com"}
@@ -25,3 +25,16 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 package-mode = false
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.2.0,<10.0.0)",
+    "pytest-asyncio (>=1.4.1,<2.0.0)"
+]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

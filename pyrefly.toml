@@ -1,3 +1,3 @@
 # Configuração do Pyrefly (type checker / language server)
-# Resolve os caminhos de importação para módulos internos do projeto.
-search-path = [".", "src"]
+# Resolve os caminhos de importação para módulos internos e pacotes da virtualenv.
+search-path = [".", "src", ".venv/Lib/site-packages"]
