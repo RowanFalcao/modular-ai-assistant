@@ -65,3 +65,4 @@ def test_bloqueio_caminho_sensivel():
 
     res_alterar = alterar_arquivo("C:/Windows/System32/hacked.txt", "teste")
     assert "não foi encontrado" in res_alterar or "Operação bloqueada" in res_alterar
+
